@@ -392,14 +392,13 @@ function calcVenta(){
   var ingNeto=ingreso-cv-imp,neto=ingNeto-costeT,pp=costeT?neto/costeT*100:0,pvCom=(ingreso-cv)/cant;
   lastVenta={name:p.name,cant:cant,pv:pv,cv:cv,tax:tax,ingreso:ingreso,coste:coste,comCompra:comCompra,imp:imp,ingNeto:ingNeto,neto:neto,plan:plan};
   out.innerHTML='<h2>Resultado</h2>'+
-    '<div class="line"><span>Ingreso bruto ('+q(cant)+' × '+eur(pv)+')</span><b>'+eur(ingreso)+'</b></div>'+
-    '<div class="line"><span>P.V con comisión incluida</span><b>'+eur(pvCom)+' / acc.</b></div>'+
-    '<div class="line"><span>C.V (comisión de venta)</span><b>− '+eur(cv)+'</b></div>'+
-    '<div class="line"><span>Impuestos retenidos ('+nf.format(tax)+' %)</span><b>− '+eur(imp)+'</b></div>'+
-    '<div class="line res"><span>Ingreso neto</span><b>'+eur(ingNeto)+'</b></div>'+
-    '<div class="line"><span>Coste de compra</span><b>− '+eur(coste)+'</b></div>'+
-    '<div class="line"><span>Comisión de compra</span><b>− '+eur(comCompra)+'</b></div>'+
-    '<div class="line res"><span>Beneficio (lo que ganas)</span><b class="'+cls(neto)+'">'+eur(neto)+' · '+pct(pp)+'</b></div>'+
+    '<div class="line"><span>Venta ('+q(cant)+' × '+eur(pv)+')</span><b>'+eur(ingreso)+'</b></div>'+
+    '<div class="line"><span>Comisión de venta</span><b>− '+eur(cv)+'</b></div>'+
+    '<div class="line"><span>Coste de compra (con su comisión)</span><b>− '+eur(costeT)+'</b></div>'+
+    '<div class="line res"><span>Beneficio bruto</span><b class="'+cls(bruto)+'">'+eur(bruto)+'</b></div>'+
+    '<div class="line"><span>Impuestos ('+nf.format(tax)+' %)</span><b>− '+eur(imp)+'</b></div>'+
+    '<div class="line res"><span>Beneficio neto</span><b class="'+cls(neto)+'">'+eur(neto)+' · '+pct(pp)+'</b></div>'+
+    '<div class="line"><span>Ingreso neto (lo que recibes)</span><b>'+eur(ingNeto)+'</b></div>'+
     '<div class="line"><span>Te quedarían</span><b>'+q(r8(p.cant-cant))+' acciones</b></div>'+
     '<button class="main" id="s-ok" type="button" style="margin-top:14px">Confirmar venta</button>'+
     '<details class="det" open><summary>Qué compras se venden (primero las más antiguas)</summary>'+det+'</details>'+
