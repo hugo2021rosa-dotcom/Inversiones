@@ -1,6 +1,6 @@
 // v2: carga siempre la última versión si hay internet; usa la copia guardada solo sin conexión
-const CACHE = "inversiones-v2";
-const SHELL = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
+const CACHE = "inversiones-v4";
+const SHELL = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "firebase-config.js"];
 
 self.addEventListener("install", e => {
   e.waitUntil(
