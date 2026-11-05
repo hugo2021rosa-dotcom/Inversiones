@@ -108,6 +108,7 @@ select{width:100%;padding:12px;border:1px solid var(--border);border-radius:12px
         <p class="note" id="s-have"></p></div>
       <div><label>P.V (precio de venta)</label><input type="text" inputmode="decimal" id="s-pv" placeholder="0,00"></div>
       <div><label>C.V (comisión de venta)</label><input type="text" inputmode="decimal" id="s-cv" value="1,00"></div>
+      <div class="full"><label>Impuestos retenidos (% sobre la ganancia)</label><input type="text" inputmode="decimal" id="s-tax" value="19"></div>
     </div>
   </div>
   <div class="card" id="s-res"></div>
@@ -136,7 +137,7 @@ select{width:100%;padding:12px;border:1px solid var(--border);border-radius:12px
       <div class="full"><button class="main" id="imp">Restaurar desde una copia</button></div>
     </div>
     <input type="file" id="impf" accept=".json,application/json" style="display:none">
-    <p class="note" id="bkmsg">Tus datos se guardan solo en este navegador. Descarga una copia de vez en cuando y guárdala en tu nube.</p>
+    <p class="note" id="bkmsg">Tus datos se guardan solos. Además puedes descargar una copia en archivo.</p>
   </div>
 </section>
 
@@ -151,7 +152,8 @@ select{width:100%;padding:12px;border:1px solid var(--border);border-radius:12px
 
 <script>
 var COLORS=["#4f46e5","#f59e0b","#10b981","#ef4444","#8b5cf6","#06b6d4","#ec4899","#84cc16","#f97316","#64748b"];
-var state={ops:[],prices:{},tr:null,sales:[]};
+var state={ops:[],prices:{},tr:null,sales:[],tax:19};
+var cloudReady=false,unsub=null;
 var $=function(s){return document.querySelector(s)};
 var nf=new Intl.NumberFormat("es-ES",{minimumFractionDigits:2,maximumFractionDigits:2});
 function eur(n){return nf.format(n)+" €"}
@@ -181,15 +183,58 @@ function show(t){
   window.scrollTo(0,0);
 }
 
+function payload(){
+  return {ops:state.ops,sales:state.sales,tr:state.tr,tax:state.tax,prices:Object.keys(state.prices).map(function(k){return {n:k,p:state.prices[k]}})};
+}
+function saveLocal(){try{localStorage.setItem("portfolio",JSON.stringify(payload()))}catch(e){}}
 function save(){
-  var data={ops:state.ops,sales:state.sales,tr:state.tr,prices:Object.keys(state.prices).map(function(k){return {n:k,p:state.prices[k]}})};
-  try{localStorage.setItem("portfolio",JSON.stringify(data))}catch(e){}
+  saveLocal();
+  if(window.cloud&&cloudReady)window.cloud.push(payload());
 }
 function load(d){
   if(!d||!Array.isArray(d.ops))return;
-  state.ops=d.ops;state.sales=Array.isArray(d.sales)?d.sales:[];state.tr=(d.tr===undefined?null:d.tr);state.prices={};
+  state.ops=d.ops;state.sales=Array.isArray(d.sales)?d.sales:[];state.tr=(d.tr===undefined?null:d.tr);
+  state.tax=(d.tax===undefined||d.tax===null)?19:d.tax;state.prices={};
   (d.prices||[]).forEach(function(x){state.prices[x.n]=x.p});
 }
+function stable(v){
+  if(Array.isArray(v))return "["+v.map(stable).join(",")+"]";
+  if(v&&typeof v==="object")return "{"+Object.keys(v).sort().map(function(k){return JSON.stringify(k)+":"+stable(v[k])}).join(",")+"}";
+  return JSON.stringify(v===undefined?null:v);
+}
+function sig(d){
+  d=JSON.parse(JSON.stringify(d));
+  return stable([d.ops||[],d.sales||[],d.tr==null?null:d.tr,d.tax==null?19:d.tax,d.prices||[]]);
+}
+function cmsg(t){if(t)console.warn(t)}
+function cerr(e){
+  var c=e&&e.code||"";
+  if(c==="permission-denied")return "Firebase no deja guardar: revisa las reglas de Firestore.";
+  if(c==="unavailable")return "Sin conexión a internet. Se guardará en el móvil.";
+  return "Error: "+(c||(e&&e.message)||e);
+}
+window.startCloud=async function(){
+  try{
+    var snap=await window.cloud.get();
+    var hasLocal=state.ops.length||state.sales.length;
+    if(snap.exists()){
+      var cd=snap.data();
+      if(hasLocal&&sig(cd)!==sig(payload())){
+        if(confirm("Hay datos guardados y otros distintos en este móvil.\n\nAceptar = usar los guardados.\nCancelar = subir los de este móvil.")){load(cd);saveLocal()}
+        else{cloudReady=true;await window.cloud.push(payload())}
+      }else{load(cd);saveLocal()}
+    }else if(hasLocal){cloudReady=true;await window.cloud.push(payload())}
+    cloudReady=true;
+    render();
+    unsub=window.cloud.watch(function(d,pending){
+      if(!d||pending)return;
+      if(sig(d)===sig(payload()))return;
+      load(d);saveLocal();render();
+    });
+  }catch(er){cloudReady=false;cmsg(cerr(er))}
+};
+window.cloudErr=function(er){cmsg(cerr(er))};
+setTimeout(function(){if(!window.cloud)cmsg("No se pudo cargar Firebase. Comprueba que existe firebase-config.js en el repositorio.")},4000);
 async function init(){
   $("#f-fecha").value=new Date().toISOString().slice(0,10);
   try{var t=localStorage.getItem("portfolio");if(t)load(JSON.parse(t))}catch(e){}
@@ -289,6 +334,7 @@ function render(){
 }
 
 function renderVenta(){
+  var ti=$("#s-tax");if(documen.activeElement!==ti)ti.value=String(state.tax).replace(".",",");
   var ps=positions().filter(function(p){return p.cant>0});
   var sel=$("#s-accion"),prev=sel.value;
   sel.innerHTML=ps.length?ps.map(function(p){return '<option value="'+esc(p.name)+'">'+esc(p.name)+'</option>'}).join(""):'<option value="">Sin acciones</option>';
@@ -315,7 +361,7 @@ function confirmarVenta(){
       o.di=r8(o.di*f);o.com=r8(o.com*f);o.cant=rest;
     }
   });
-  state.sales.push({fecha:new Date().toISOString().slice(0,10),accion:v.name,cant:v.cant,pv:v.pv,cv:v.cv,ingreso:v.ingreso,coste:v.coste,neto:v.neto});
+  state.sales.push({fecha:new Date().toISOString().slice(0,10),accion:v.name,cant:v.cant,pv:v.pv,cv:v.cv,ingreso:v.ingreso,coste:v.coste,comCompra:v.comCompra,tax:v.tax,impuesto:v.imp,ingresoNeto:v.ingNeto,neto:v.neto});
   $("#s-cant").value="";
   save();render();
 }
@@ -325,31 +371,39 @@ function calcVenta(){
   var out=$("#s-res");lastVenta=null;
   if(!p||!(p.cant>0)){$("#s-have").textContent="";out.innerHTML='<div class="empty">Añade una compra para poder simular ventas.</div>';return}
   $("#s-have").textContent="Tienes "+q(p.cant)+" acciones · P.C medio "+eur(p.pc);
-  var cant=num($("#s-cant").value),pv=num($("#s-pv").value),cv=num($("#s-cv").value);
+  var cant=num($("#s-cant").value),pv=num($("#s-pv").value),cv=num($("#s-cv").value),tax=num($("#s-tax").value);
   if(cant>p.cant+1e-9){out.innerHTML='<p class="warn">Solo tienes '+q(p.cant)+' acciones de '+esc(p.name)+'.</p>';return}
   if(!cant||!pv){out.innerHTML='<div class="empty">Escribe la cantidad y el P.V para calcular el beneficio.</div>';return}
   var lots=p.ops.map(function(o,i){return {o:o,i:i}}).sort(function(a,b){return a.o.fecha<b.o.fecha?-1:(a.o.fecha>b.o.fecha?1:a.i-b.i)});
-  var resto=cant,coste=0,det="",plan=[];
+  var resto=cant,coste=0,comCompra=0,det="",plan=[];
   lots.forEach(function(l){
     if(resto<=1e-9)return;
     var t=Math.min(resto,l.o.cant),pc=opPc(l.o);
-    coste+=t*pc;resto=r8(resto-t);plan.push({o:l.o,t:t});
-    det+='<div class="orow"><span>'+fdate(l.o.fecha)+'</span><b>'+q(t)+' × '+eur(pc)+'</b><span>'+eur(t*pc)+'</span></div>';
+    var cm=l.o.cant?(l.o.com||0)*t/l.o.cant:0,cl=t*pc+cm,ga=t*pv-cl;
+    coste+=t*pc;comCompra+=cm;resto=r8(resto-t);plan.push({o:l.o,t:t});
+    det+='<div class="orow"><span>'+fdate(l.o.fecha)+'</span><b>'+q(t)+' × '+eur(pc)+'</b><span>'+eur(cl)+'</span></div>'+
+      '<div class="orow" style="font-size:12px"><span class="muted">P.C con comisión: '+eur(cl/t)+'</span><span class="'+cls(ga)+'">'+(ga>=0?"ganas ":"pierdes ")+eur(Math.abs(ga))+'</span></div>';
   });
-  var ingreso=cant*pv,neto=ingreso-coste-cv,pp=coste?neto/coste*100:0;
-  lastVenta={name:p.name,cant:cant,pv:pv,cv:cv,ingreso:ingreso,coste:coste,neto:neto,plan:plan};
+  var ingreso=cant*pv,costeT=coste+comCompra;
+  var bruto=ingreso-cv-costeT,imp=bruto>0?bruto*tax/100:0;
+  var ingNeto=ingreso-cv-imp,neto=ingNeto-costeT,pp=costeT?neto/costeT*100:0,pvCom=(ingreso-cv)/cant;
+  lastVenta={name:p.name,cant:cant,pv:pv,cv:cv,tax:tax,ingreso:ingreso,coste:coste,comCompra:comCompra,imp:imp,ingNeto:ingNeto,neto:neto,plan:plan};
   out.innerHTML='<h2>Resultado</h2>'+
     '<div class="line"><span>Ingreso bruto ('+q(cant)+' × '+eur(pv)+')</span><b>'+eur(ingreso)+'</b></div>'+
+    '<div class="line"><span>P.V con comisión incluida</span><b>'+eur(pvCom)+' / acc.</b></div>'+
+    '<div class="line"><span>C.V (comisión de venta)</span><b>− '+eur(cv)+'</b></div>'+
+    '<div class="line"><span>Impuestos retenidos ('+nf.format(tax)+' %)</span><b>− '+eur(imp)+'</b></div>'+
+    '<div class="line res"><span>Ingreso neto</span><b>'+eur(ingNeto)+'</b></div>'+
     '<div class="line"><span>Coste de compra</span><b>− '+eur(coste)+'</b></div>'+
-    '<div class="line"><span>C.V</span><b>− '+eur(cv)+'</b></div>'+
-    '<div class="line res"><span>Beneficio</span><b class="'+cls(neto)+'">'+eur(neto)+' · '+pct(pp)+'</b></div>'+
-    '<div class="line"><span>Recibirías en tu cuenta</span><b>'+eur(ingreso-cv)+'</b></div>'+
+    '<div class="line"><span>Comisión de compra</span><b>− '+eur(comCompra)+'</b></div>'+
+    '<div class="line res"><span>Beneficio (lo que ganas)</span><b class="'+cls(neto)+'">'+eur(neto)+' · '+pct(pp)+'</b></div>'+
     '<div class="line"><span>Te quedarían</span><b>'+q(r8(p.cant-cant))+' acciones</b></div>'+
     '<button class="main" id="s-ok" type="button" style="margin-top:14px">Confirmar venta</button>'+
-    '<details class="det" open><summary>Qué compras se venden</summary>'+det+'</details>'+
-    '<p class="note">Se venden primero las compras más antiguas. El coste usa el P.C de cada compra y no incluye la comisión de compra.</p>';
+    '<details class="det" open><summary>Qué compras se venden (primero las más antiguas)</summary>'+det+'</details>'+
+    '<p class="note">Sistema FIFO: lo que antes entra, antes sale. Cada compra muestra su coste con la comisión de compra y lo que ganas con ella antes de la comisión de venta y los impuestos. Los impuestos solo se aplican si hay ganancia.</p>';
 }
-["#s-cant","#s-pv","#s-cv"].forEach(function(x){$(x).addEventListener("input",calcVenta)});
+["#s-cant","#s-pv","#s-cv","#s-tax"].forEach(function(x){$(x).addEventListener("input",function(){if(x==="#s-tax")state.tax=num($("#s-tax").value);calcVenta()})});
+$("#s-tax").addEventListener("change",save);
 $("#s-accion").addEventListener("change",function(){
   var p=positions().filter(function(x){return x.name===$("#s-accion").value})[0];
   $("#s-cant").value="";$("#s-pv").value=(p&&p.has)?String(p.price).replace(".",","):"";
@@ -398,7 +452,7 @@ document.addEventListener("change",function(e){
 });
 function bkmsg(t){$("#bkmsg").textContent=t}
 $("#exp").onclick=function(){
-  var data={ops:state.ops,sales:state.sales,tr:state.tr,prices:Object.keys(state.prices).map(function(k){return {n:k,p:state.prices[k]}})};
+  var data=payload();
   var blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
   var a=document.createElement("a");
   a.href=URL.createObjectURL(blob);
@@ -423,6 +477,21 @@ $("#impf").onchange=function(){
 };
 init();
 if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
+</script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { firebaseConfig } from "./firebase-config.js";
+
+const db = getFirestore(initializeApp(firebaseConfig));
+const ref = doc(db, "inversiones", "cartera-4ebc2e1f918daa71");
+
+window.cloud = {
+  get: () => getDoc(ref),
+  push: d => setDoc(ref, JSON.parse(JSON.stringify(d))).catch(er => window.cloudErr && window.cloudErr(er)),
+  watch: cb => onSnapshot(ref, snap => cb(snap.exists() ? snap.data() : null, snap.metadata.hasPendingWrites), er => window.cloudErr && window.cloudErr(er))
+};
+window.startCloud();
 </script>
 </body>
 </html>
