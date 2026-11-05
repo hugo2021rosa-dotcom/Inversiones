@@ -279,7 +279,7 @@ function pie(items){
   return '<svg viewBox="0 0 200 200" role="img" aria-label="Gráfico circular">'+sv+'</svg><div class="leg">'+lg+'</div>';
 }
 
-function render(){
+function renderMain(){
   var ps=positions();
   ps.forEach(function(p,i){p.i=i});
   var inv=ps.reduce(function(a,p){return a+p.total},0);
@@ -330,11 +330,14 @@ function render(){
     b+='<div class="bar"><b style="text-align:left">'+esc(p.name)+'</b><div class="track"><div class="mid"></div><u style="'+st+'"></u></div><b class="'+cls(p.plp)+'">'+pct(p.plp)+'</b></div>';
   });
   $("#bars").innerHTML=b||'<div class="empty">Sin datos todavía</div>';
-  renderVenta();
+}
+function render(){
+  try{renderMain()}catch(e){console.warn(e);var r=$("#hero");if(r&&!r.innerHTML)r.innerHTML='<small>Error: '+esc(e&&e.message||e)+'</small>'}
+  try{renderVenta()}catch(e){console.warn(e);$("#s-res").innerHTML='<p class="warn">Error: '+esc(e&&e.message||e)+'</p>'}
 }
 
 function renderVenta(){
-  var ti=$("#s-tax");if(documen.activeElement!==ti)ti.value=String(state.tax).replace(".",",");
+  var ti=$("#s-tax");if(document.activeElement!==ti)ti.value=String(state.tax).replace(".",",");
   var ps=positions().filter(function(p){return p.cant>0});
   var sel=$("#s-accion"),prev=sel.value;
   sel.innerHTML=ps.length?ps.map(function(p){return '<option value="'+esc(p.name)+'">'+esc(p.name)+'</option>'}).join(""):'<option value="">Sin acciones</option>';
